@@ -11,28 +11,8 @@ class BC_Thread	(threading.Thread):
 
 	def run(self):
 		print("Starting "+ self.name)
-		count = 2
-		while(count >= 0):
-			Functioning()
-			count = count-1
-
-
-		# Start running the thread which
-		# will perform the following functions
-
-		# 1. Validating transactions
-		# 2. Creating blocks (adding transactions)		
-		# 3. Add the block to the chain
-
-
-# class Block:
-# 	def __init__(self, index, data, prev_hash):	
-#         contents = {'index':index, 'parentHash': prev_hash, 'txns': data}
-#         self.hash = hash_block(contents)
-#         self.block = {'Hash': self.hash, 'Contents': contents}
-#         self.BlockStr = json.dumps(block, sort_keys=True)
-#         #self.timestamp = timestamp #removed timestamp
-
+		Functioning()
+		
 
 
 def hash_block(msg=""):
@@ -44,15 +24,9 @@ def hash_block(msg=""):
 	else:
 		return hashlib.sha256(str(msg).encode('utf-8')).hexdigest()
 
-        #sha = hasher.sha256()
-        # sha.update( str(self.index).encode('utf-8') +
-        #             str(self.timestamp).encode('utf-8') + 
-        #             str(self.data).encode('utf-8')+ 
-        #             str(self.prev_hash).encode('utf-8'))
-        #return sha.hexdigest()
-
+        
 def origin_block():
-	initialTxn = {"FirstName": "10.0.0.1"}
+	initialTxn = {"FirstName": 0}
 	contents = {'index': 0, 'parentHash': "NONE", "txns": initialTxn}
 	selfHash = hash_block(contents)
 	selfBlock = {'Hash': selfHash, 'Contents': contents}
@@ -68,18 +42,82 @@ def next_block(txns, chain):
 	blockHash = hash_block( blockContents )
 	block = {'Hash':blockHash,'Contents':blockContents}
 	return block
-    #txnCount    = len(txns)
-
-    # this_index = last_block.index + 1
-    # this_timestamp = date.datetime.now()
-    # this_data = data.decode('ascii')
-    # this_hash = last_block.hash
-    # return Block(this_index, this_timestamp, this_data, this_hash)
-
+    
 
 def isValidTxn(txn, state):
 		#This is where the digital signature logic will go
 		return True
+
+
+def updateState(txn, state):
+	state = state.copy() # As dictionaries are mutable, avoid confusion
+	for key in txn:
+		if key in state.keys():
+			state[key] += txn[key]
+		else:
+			state[key] = txn[key]
+	return state
+
+
+
+def checkHash(block):
+	#checks the block hash; raises exception if hash does not match
+	#the contents of the block.
+	expected = hash_block( block['Contents'] )
+	if block['Hash'] != expected:
+		raise Exception('Hash does not match the block contents')
+	return
+
+
+
+def checkBlockValidity(block,parent,state):    
+    
+    parentNumber = parent['Contents']['index']
+    parentHash   = parent['Hash']
+    index  = block['Contents']['index']
+    
+    
+    for txn in block['Contents']['txns']:
+        if isValidTxn(txn,state):
+            state = updateState(txn,state)
+        else:
+            raise Exception('Invalid transaction in block %s: %s'%(index,txn))
+
+    checkHash(block)
+
+    if index!=(parentNumber+1):
+        raise Exception('Hash does not match contents of block %s'%index)
+
+    if block['Contents']['parentHash'] != parentHash:
+        raise Exception('Parent hash not accurate at block %s'%index)
+    
+    return state
+
+
+
+def checkChain(chain):
+    
+    if type(chain)==str:
+        try:
+            chain = json.loads(chain)
+            assert( type(chain)==list)
+        except:  
+            return False
+    elif type(chain)!=list:
+        return False
+    
+    state = {}
+
+    for txn in chain[0]['Contents']['txns']:
+        state = updateState(txn,state)
+    checkHash(chain[0])
+    parent = chain[0]
+    
+    for block in chain[1:]:
+        state = checkBlockValidity(block,parent,state)
+        parent = block
+        
+    return state
 
 
 
@@ -87,37 +125,40 @@ def isValidTxn(txn, state):
 def Functioning():
 	bchain = [origin_block()]
 
-	dataList = {"Hey": "1st", "SSUP":"2nd", "ASB":"3rd"}
+	dataList = [{"Hey": 1}, {"SSUP": 2}, {"ASB":3}]
 	blockSizeLimit = 5
-	state = {}
+	state = {u'FirstName':0}
 
 	while len(dataList) > 0:
 		bufferstart = len(dataList)
 
 		txnList = []
 		while (len(dataList) > 0 & len(txnList) < blockSizeLimit):
-			newTxn = dataList.popitem()
+			newTxn = dataList.pop()
 			validity = isValidTxn(newTxn, state)
-			if validity:           # If we got a valid state, not 'False'
+			if validity:
+				# If we got a valid state, not 'False'
 				txnList.append(newTxn)
-		        #state = updateState(newTxn,state)
+				state = updateState(newTxn,state)
 			else:
 			    print("ignored transaction")
 			    sys.stdout.flush()
 			    continue
 
 		myBlock = next_block(txnList,bchain)
-		bchain.append(myBlock)
+
+		print("Blockchain on Node A is currently %s blocks long"%len(bchain))
 
 
-	# for i in dataList:
-	# 	block_to_add = next_block(self.prev_block, i)
-	# 	bchain.append( block_to_add )
-	# 	prev_block = block_to_add
-	# 	print("Block",block_to_add.index," has been added!")
-	#     print("Block contains the data- ",block_to_add.data)
-	#     print("Hash is {}\n".format(block_to_add.hash))	
-	    
+		try:
+			print("New Block Received; checking validity...")
+			state = checkBlockValidity(myBlock,bchain[-1],state)
+			bchain.append(myBlock)
+		except:
+			print("Invalid block; ignoring and waiting for the next block...")
+
+		print("Blockchain on Node A is now %s blocks long"%len(bchain))
+
 
 	print("\nThe chain contains - ")
 	for nodes in bchain:
